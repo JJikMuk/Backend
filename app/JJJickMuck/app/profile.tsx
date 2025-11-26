@@ -13,6 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { theme } from '../constants/theme';
+import { useAuth } from '../contexts/AuthContext';
 
 const ALLERGY_OPTIONS = [
   { key: 'milk', label: '우유' },
@@ -36,6 +37,7 @@ const STORAGE_KEY = '@user_profile_settings';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { logout } = useAuth();
 
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [diet, setDiet] = useState<string>('normal');
@@ -88,6 +90,25 @@ export default function ProfileScreen() {
       console.log('저장 실패:', e);
       Alert.alert('오류', '설정을 저장하는 중 오류가 발생했습니다.');
     }
+  };
+
+  // 로그아웃
+  const handleLogout = () => {
+    Alert.alert(
+      '로그아웃',
+      '로그아웃 하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '로그아웃',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            router.replace('/login');
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -171,6 +192,11 @@ export default function ProfileScreen() {
         {/* 저장 버튼 */}
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
           <Text style={styles.saveButtonText}>설정 저장하기</Text>
+        </TouchableOpacity>
+
+        {/* 로그아웃 버튼 */}
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>로그아웃</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -283,5 +309,19 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.subtitle,
     fontWeight: '700',
     color: '#fff',
+  },
+  logoutButton: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    paddingVertical: theme.spacing(1.6),
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginTop: theme.spacing(2),
+  },
+  logoutButtonText: {
+    fontSize: theme.typography.subtitle,
+    fontWeight: '600',
+    color: '#DC3545',
   },
 });

@@ -48,7 +48,7 @@ export default function ScanScreen() {
     );
   }
 
-  // 촬영 및 백엔드 전송 함수
+  // 촬영 및 하드코딩 결과 전송
   const handleTakePhoto = async () => {
     if (cameraRef.current) {
       setLoading(true);
@@ -60,49 +60,31 @@ export default function ScanScreen() {
           quality: 0.8,
         });
 
-        // 토큰 가져오기
-        const token = await AsyncStorage.getItem('@auth_token');
-        if (!token) {
-          Alert.alert('오류', '로그인이 필요합니다.');
-          setLoading(false);
-          return;
-        }
+        // 하드코딩: 짧은 분석 시뮬레이션
+        setTimeout(() => {
+          // 가짜 데이터로 결과 화면 이동
+          const demoData = {
+            scanId: 'demo-scan-' + Date.now(),
+            ingredients: ['물', '설탕', '밀가루', '소금'],
+            allergens: ['밀'],
+            sodium: 450,
+            sugar: 12,
+            recommendation: 'caution', // safe, caution, danger
+            analysis: '나트륨 함량이 다소 높습니다. 적당히 섭취하세요.',
+          };
 
-        // FormData 생성
-        const formData = new FormData();
-        formData.append('image', {
-          uri: photo.uri,
-          type: 'image/jpeg',
-          name: 'scan.jpg',
-        } as any);
-
-        // 백엔드로 전송
-        const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.OCR_PROCESS}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-          body: formData,
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || '이미지 처리에 실패했습니다.');
-        }
-
-        // 결과 화면으로 이동
-        router.replace({
-          pathname: '/result',
-          params: {
-            scanId: result.data.scanId,
-            data: JSON.stringify(result.data),
-          },
-        });
+          router.replace({
+            pathname: '/result',
+            params: {
+              scanId: demoData.scanId,
+              data: JSON.stringify(demoData),
+            },
+          });
+        }, 1500);
 
       } catch (error) {
-        console.error('OCR processing error:', error);
-        Alert.alert('오류', error instanceof Error ? error.message : '이미지 처리 중 오류가 발생했습니다.');
+        console.error('Photo error:', error);
+        Alert.alert('오류', '사진 촬영에 실패했습니다.');
         setLoading(false);
       }
     }
