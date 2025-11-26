@@ -1,12 +1,13 @@
 // app/scan.tsx
 import { useEffect, useRef, useState } from 'react';
-import { SafeAreaView, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { SafeAreaView, View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import { theme } from '../constants/theme';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, API_ENDPOINTS } from '../constants/api';
+import { extractTextFromImage } from '../services/geminiOcrService';
 
 export default function ScanScreen() {
   const router = useRouter();
@@ -19,6 +20,17 @@ export default function ScanScreen() {
 
   // 로딩 표시
   const [loading, setLoading] = useState(false);
+
+  // 디버그 로그
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+
+  // 디버그 로그 추가 함수
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logMessage = `[${timestamp}] ${message}`;
+    console.log(logMessage);
+    setDebugLogs(prev => [...prev, logMessage].slice(-10)); // 최근 10개만 유지
+  };
 
   // 권한 요청
   useEffect(() => {
@@ -48,10 +60,20 @@ export default function ScanScreen() {
     );
   }
 
-  // 촬영 및 하드코딩 결과 전송
+  // 촬영 및 Gemini OCR 처리
   const handleTakePhoto = async () => {
+    console.log('🔥 촬영 버튼 클릭됨!');
+    Alert.alert('알림', '촬영 버튼이 눌렸습니다!');
+
+    if (!cameraRef.current) {
+      console.log('❌ 카메라 ref가 없음');
+      Alert.alert('오류', '카메라가 준비되지 않았습니다.');
+      return;
+    }
+
     if (cameraRef.current) {
       setLoading(true);
+      addLog('📸 사진 촬영 시작...');
 
       try {
         // 사진 촬영
@@ -60,18 +82,29 @@ export default function ScanScreen() {
           quality: 0.8,
         });
 
-        // 하드코딩: 짧은 분석 시뮬레이션
-        setTimeout(() => {
-          // 가짜 데이터로 결과 화면 이동
+        addLog(`✅ 사진 촬영 성공! ${photo.width}x${photo.height}`);
+        addLog('🔍 Gemini OCR 시작...');
+
+        // Gemini OCR로 텍스트 추출
+        const ocrResult = await extractTextFromImage(photo.uri);
+
+        if (ocrResult.success && ocrResult.text) {
+          addLog(`✅ OCR 성공! (${ocrResult.text.length}자)`);
+          addLog(`📝 추출된 텍스트: ${ocrResult.text.substring(0, 50)}...`);
+
+          // OCR 결과로 데모 데이터 생성
           const demoData = {
-            scanId: 'demo-scan-' + Date.now(),
-            ingredients: ['물', '설탕', '밀가루', '소금'],
-            allergens: ['밀'],
+            scanId: 'ocr-scan-' + Date.now(),
+            extractedText: ocrResult.text,
+            ingredients: parseIngredients(ocrResult.text),
+            allergens: parseAllergens(ocrResult.text),
             sodium: 450,
             sugar: 12,
-            recommendation: 'caution', // safe, caution, danger
-            analysis: '나트륨 함량이 다소 높습니다. 적당히 섭취하세요.',
+            recommendation: 'caution',
+            analysis: `성분표에서 ${ocrResult.text.length}자의 텍스트를 추출했습니다.`,
           };
+
+          addLog('🎯 결과 화면으로 이동...');
 
           router.replace({
             pathname: '/result',
@@ -80,14 +113,32 @@ export default function ScanScreen() {
               data: JSON.stringify(demoData),
             },
           });
-        }, 1500);
+        } else {
+          addLog(`❌ OCR 실패: ${ocrResult.error}`);
+          Alert.alert('오류', ocrResult.error || '텍스트를 추출할 수 없습니다.');
+          setLoading(false);
+        }
 
       } catch (error) {
+        addLog(`❌ 오류 발생: ${error}`);
         console.error('Photo error:', error);
-        Alert.alert('오류', '사진 촬영에 실패했습니다.');
+        Alert.alert('오류', '처리 중 문제가 발생했습니다.');
         setLoading(false);
       }
     }
+  };
+
+  // 간단한 성분 파싱 (실제로는 더 정교한 파싱 필요)
+  const parseIngredients = (text: string): string[] => {
+    // 기본 성분 키워드 추출 (예시)
+    const commonIngredients = ['물', '설탕', '소금', '밀가루', '식용유', '간장', '고추가루'];
+    return commonIngredients.filter(ingredient => text.includes(ingredient));
+  };
+
+  // 간단한 알레르기 유발 성분 파싱
+  const parseAllergens = (text: string): string[] => {
+    const commonAllergens = ['밀', '대두', '우유', '계란', '땅콩', '새우', '게'];
+    return commonAllergens.filter(allergen => text.includes(allergen));
   };
 
   return (
@@ -116,10 +167,28 @@ export default function ScanScreen() {
 
         {/* 원형 촬영 버튼 */}
         <View style={styles.captureWrapper}>
-          <TouchableOpacity style={styles.captureButton} onPress={handleTakePhoto}>
+          <TouchableOpacity
+            style={styles.captureButton}
+            onPress={handleTakePhoto}
+            disabled={loading}
+          >
             <Ionicons name="camera" size={32} color="#fff" />
           </TouchableOpacity>
         </View>
+
+        {/* 디버그 로그 패널 */}
+        {debugLogs.length > 0 && (
+          <View style={styles.debugContainer}>
+            <Text style={styles.debugLabel}>🐛 디버그 로그</Text>
+            <ScrollView style={styles.debugScrollView}>
+              {debugLogs.map((log, index) => (
+                <Text key={index} style={styles.debugText}>
+                  {log}
+                </Text>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
       </View>
     </SafeAreaView>
@@ -220,5 +289,31 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  debugContainer: {
+    marginTop: theme.spacing(2),
+    padding: theme.spacing(1.5),
+    backgroundColor: '#f5f5f5',
+    borderRadius: theme.radius.md,
+  },
+  debugLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: theme.spacing(1),
+    color: '#666',
+  },
+  debugScrollView: {
+    maxHeight: 150,
+    backgroundColor: '#1e1e1e',
+    borderRadius: theme.radius.sm,
+    padding: theme.spacing(1),
+  },
+  debugText: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: '#00ff00',
+    fontFamily: 'monospace',
+    marginBottom: 2,
   },
 });
